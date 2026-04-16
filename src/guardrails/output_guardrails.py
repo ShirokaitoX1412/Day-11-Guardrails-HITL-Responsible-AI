@@ -172,16 +172,33 @@ class OutputGuardrailPlugin(base_plugin.BasePlugin):
         if not response_text:
             return llm_response
 
-        # TODO: Implement logic:
-        # 1. Call content_filter(response_text)
-        #    - If issues found: replace llm_response.content with redacted version
-        #    - Increment self.redacted_count
-        # 2. If use_llm_judge: call llm_safety_check(response_text)
-        #    - If unsafe: replace llm_response.content with a safe message
-        #    - Increment self.blocked_count
-        # 3. Return llm_response (possibly modified)
+        # Step 1: Content filter for PII and secrets
+        filter_result = content_filter(response_text)
+        if not filter_result["safe"]:
+            self.redacted_count += 1
+            # Replace with redacted version
+            if hasattr(llm_response, 'content') and llm_response.content:
+                llm_response.content = types.Content(
+                    role="model",
+                    parts=[types.Part.from_text(text=filter_result["redacted"])]
+                )
+            return llm_response
 
-        return llm_response  # TODO: modify if needed
+        # Step 2: LLM judge for safety check
+        if self.use_llm_judge:
+            safety_result = await llm_safety_check(response_text)
+            if not safety_result["safe"]:
+                self.blocked_count += 1
+                # Replace with safe message
+                safe_message = "I cannot provide that information. Please ask banking-related questions only."
+                if hasattr(llm_response, 'content') and llm_response.content:
+                    llm_response.content = types.Content(
+                        role="model",
+                        parts=[types.Part.from_text(text=safe_message)]
+                    )
+                return llm_response
+
+        return llm_response
 
 
 # ============================================================

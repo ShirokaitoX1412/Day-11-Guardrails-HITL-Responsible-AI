@@ -33,9 +33,17 @@ async def part1_attacks():
     print("\n--- Running manual attacks (TODO 1) ---")
     results = await run_attacks(agent, runner)
 
-    # TODO 2: Generate AI attack test cases
+    # TODO 2: Generate AI attack test cases (skip if quota exceeded)
     print("\n--- Generating AI attacks (TODO 2) ---")
-    ai_attacks = await generate_ai_attacks()
+    try:
+        ai_attacks = await generate_ai_attacks()
+    except Exception as e:
+        if "quota" in str(e).lower() or "429" in str(e):
+            print("⚠️  API quota exceeded - skipping AI-generated attacks")
+            print("   Using manual attacks only for testing")
+            ai_attacks = []
+        else:
+            raise
 
     return results
 
