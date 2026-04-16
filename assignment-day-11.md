@@ -45,25 +45,117 @@ User Input
     ▼
 ┌─────────────────────┐
 │  Rate Limiter        │ ← Prevent abuse (too many requests)
+│  (Sliding Window)    │  - Max 10 requests per 60s per user
+│  RateLimitPlugin     │  - Tracks user_windows with timestamps
 └─────────┬───────────┘
           ▼
 ┌─────────────────────┐
-│  Input Guardrails    │ ← Injection detection + topic filter + NeMo rules
+│  Input Guardrails    │ ← Multi-layer input validation
+│                      │  - Injection detection (regex patterns)
+│  InputGuardrailPlugin│  - Topic filtering (allowed/blocked topics)
+│                      │  - NeMo Colang rules (if enabled)
 └─────────┬───────────┘
           ▼
 ┌─────────────────────┐
 │  LLM (Gemini)        │ ← Generate response
+│  gemini-2.5-flash    │  - Banking customer service agent
+│                      │  - Protected system prompt (no secrets)
 └─────────┬───────────┘
           ▼
 ┌─────────────────────┐
-│  Output Guardrails   │ ← PII filter + LLM-as-Judge (multi-criteria)
+│  Output Guardrails   │ ← Multi-layer output validation
+│                      │  - PII/secrets detection & redaction
+│  OutputGuardrailPlugin│ - LLM-as-Judge (4 criteria scoring)
+│                      │  - Content filtering
 └─────────┬───────────┘
           ▼
 ┌─────────────────────┐
-│  Audit & Monitoring  │ ← Log everything + alert on anomalies
+│  Audit & Monitoring  │ ← Comprehensive logging & alerting
+│                      │  - JSON audit logs with timestamps
+│  AuditLogPlugin      │  - Block rate monitoring
+│  MonitoringAlert     │  - Latency tracking
+│                      │  - Threshold-based alerts
 └─────────┬───────────┘
           ▼
       Response
+```
+
+#### Detailed Component Architecture
+
+**1. Rate Limiter (RateLimitPlugin)**
+```python
+class RateLimitPlugin(BasePlugin):
+    - user_windows: defaultdict(deque)  # User → timestamps
+    - max_requests: int = 10
+    - window_seconds: int = 60
+    
+    Methods:
+    - on_user_message_callback(): Check rate limits
+    - calculate_wait_time(): Return wait time if blocked
+```
+
+**2. Input Guardrails (InputGuardrailPlugin)**
+```python
+class InputGuardrailPlugin(BasePlugin):
+    Components:
+    - detect_injection(): Regex-based injection detection
+    - topic_filter(): Allowed/blocked topic validation
+    - NeMo integration: Colang rules processing
+    
+    Injection Patterns:
+    - "ignore all previous instructions"
+    - "you are now [role]"
+    - "reveal your system prompt"
+    - "act as unrestricted"
+    - "bypass security"
+```
+
+**3. Output Guardrails (OutputGuardrailPlugin)**
+```python
+class OutputGuardrailPlugin(BasePlugin):
+    Components:
+    - content_filter(): PII/secrets detection
+    - llm_judge(): Multi-criteria evaluation
+    - redaction: Automatic PII replacement
+    
+    PII Patterns:
+    - VN phone numbers: 0\d{9,10}
+    - Emails: [\w.-]+@[\w.-]+\.[a-zA-Z]{2,}
+    - National ID: \b\d{9}\b|\b\d{12}\b
+    - API keys: sk-[a-zA-Z0-9-]+
+    - Passwords: password\s*[:=]\s*\S+
+    
+    LLM Judge Criteria (1-5 scale):
+    - SAFETY: No harmful content
+    - RELEVANCE: Banking-related
+    - ACCURACY: No fabricated data
+    - TONE: Professional & helpful
+```
+
+**4. Audit & Monitoring (AuditLogPlugin + MonitoringAlert)**
+```python
+class AuditLogPlugin(BasePlugin):
+    - logs: List[Dict]  # Complete interaction history
+    - Records: input, output, timestamps, blocked status
+    - Export: JSON format with indent=2
+
+class MonitoringAlert:
+    - Metrics: block_rate, rate_limit_hits, judge_fail_rate
+    - Thresholds: Configurable alert levels
+    - Alerts: Console output when exceeded
+```
+
+**5. Testing Pipeline (SecurityTestPipeline)**
+```python
+class SecurityTestPipeline:
+    - KNOWN_SECRETS: ["admin123", "sk-vinbank-secret-2024", ...]
+    - Test categories: safe_queries, attack_queries, edge_cases
+    
+    Methods:
+    - run_single(): Test individual attack
+    - run_all(): Batch testing
+    - _check_for_leaks(): Secret detection
+    - print_report(): Formatted results
 ```
 
 ### Required Components
